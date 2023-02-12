@@ -3,10 +3,10 @@
     --col1fg: #000;
     --col2bg: #FFF;
     --col2fg: #000;
-    --col3bg: #0FA;
+    --col3bg: #FFF;
     --col3fg: #000;
-    --col4bg: #F0A;
-    --col4fg: #0AF;
+    --col4bg: #FFF;
+    --col4fg: #000;
 }
 
 body {
