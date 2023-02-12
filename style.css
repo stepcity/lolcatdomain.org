@@ -30,6 +30,9 @@ h2, h4, h6 {
 
 hr {
     display: none;
+    height: 1px;
+    border: unset;
+    background: #000;
 }
 
 section, header, footer {
