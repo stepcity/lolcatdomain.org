@@ -42,6 +42,7 @@ section, header, footer {
 nav {
     display: table;
     border-collapse: collapse;
+    box-shadow: 1px 1px 0px 0px #000;
     background: #FFF;
     color: #000;
 }
