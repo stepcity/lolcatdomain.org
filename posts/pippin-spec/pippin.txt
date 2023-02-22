@@ -1,0 +1,125 @@
+cccc: 
+0000: jns | jmi | jnpl | 
+0001: jzs | jeq |      | 
+0010: jvs | jov |      | 
+0011: jcs | jlo | jnhs | 
+0100:     | jls | jnhi | 
+0101:     | jlt | jnge | 
+0110:     | jle | jngt | 
+0111:     |     |      | jsr
+1000: jnc | jpl | jnmi | 
+1001: jzc |     | jneq | 
+1010: jvc |     | jnov | 
+1011: jcc | jhs | jnlo | 
+1100:     | jhi | jnls | 
+1101:     | jge | jnlt | 
+1110:     | jgt | jnle | 
+1111:     |     |      | jmp
+
+mmmxxx: 
+000xxx: dy
+001xxx: ay
+010xxx: (ay++)
+011xxx: (--ay)
+100xxx: (ay)
+101xxx: (ay+dsp16)
+110xxx: (ay+dsp32)
+111000: sr
+111010: #imm
+111101: (ip+dsp16)
+111110: (ip+dsp32)
+
+0000000000000000: nop   
+0000000000010000: rfi   
+0000000000011000: unlnk 
+00000000ss110000: rfs   <imm>
+00000000ss111000: lnk   <imm>
+00000001ssmmmxxx: cmpi  x, <imm>
+00000010ssmmmxxx: addi  x, <imm>
+00000011ssmmmxxx: subi  x, <imm>
+00000100ssmmmxxx: xori  x, <imm>
+00000101ssmmmxxx: ori   x, <imm>
+00000110ssmmmxxx: andi  x, <imm>
+00000111ssmmmxxx: sti   x, <imm>
+00001000ssmmmxxx: not   x
+00001001ssmmmxxx: neg   x
+00001010ssmmmxxx: adc   x
+00001011ssmmmxxx: sbc   x
+00001100ssmmmxxx: clr   x
+00001101ssmmmxxx: rev   x
+00001110ssmmmxxx: ext   x
+00001111ssmmmxxx: tst   x
+00010yyy00001xxx: mul   y, x
+00010yyy00010xxx: hmulu y, x
+00010yyy00011xxx: hmuls y, x
+00010yyy00100xxx: divu  y, x
+00010yyy00101xxx: divs  y, x
+00010yyy00110xxx: modu  y, x
+00010yyy00111xxx: mods  y, x
+00011yyy00mmmxxx: lsl   y, x
+00011yyy01mmmxxx: lsr   y, x
+00011yyy10mmmxxx: asr   y, x
+00011yyy11mmmxxx: ror   y, x
+01000yyyqqqqqqqq: ldq   y, q
+01001yyyqqqqqqqq: cmpq  y, q
+01010qqqssmmmxxx: addq  x, q
+01011qqqssmmmxxx: subq  x, q
+01100qqqqqmmmxxx: lslq  x, q
+01101qqqqqmmmxxx: lsrq  x, q
+01110qqqqqmmmxxx: asrq  x, q
+01111qqqqqmmmxxx: rorq  x, q
+0111100000mmmxxx: rrc   x
+10000yyyssmmmxxx: ld    y, x
+10001yyyssmmmxxx: cmp   y, x
+10010yyyssmmmxxx: add   y, x
+10011yyyssmmmxxx: sub   y, x
+10100yyyssmmmxxx: xor   y, x
+10101yyyssmmmxxx: or    y, x
+10110yyyssmmmxxx: and   y, x
+10111yyyssmmmxxx: st    x, y
+1110ccccqqqqqqqq: bcc   q
+1111ccccssmmmxxx: jcc   x
+
+function int4 status = main() {
+    status = factorial(6)!
+}
+
+function int4 y = factorial(int1 x) {
+    if x < 0
+        y = -1!
+    
+    y = 1.
+    
+    while x > 0 {
+        y = y * x.
+        x = x - 1.
+    }
+}
+
+main:
+    subq  sp, #4
+    sti   1(--sp), #6
+    bsr   "factorial"
+    brk   
+
+factorial:
+    lnk   
+    tst   1(bp+4)
+    bnlt  "else"
+    sti   4(bp+8), #-1
+    bra   "return"
+else:
+    sti   4(bp+8), #1
+    bra   "test"
+loop:
+    ld    d1, 4(bp+8)
+    ld    d2, 1(bp+4)
+    mul   d1, d2
+    st    4(bp+8), d1
+    subq  1(bp+4), #1
+test:
+    tst   1(bp+4)
+    bgt   "loop"
+return:
+    unlnk 
+    rfs   #4

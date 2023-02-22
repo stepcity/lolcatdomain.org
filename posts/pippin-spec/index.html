@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>lolcatdomain.org</title>
+    <link href="/style.css" rel="stylesheet">
+    <link href="/icon.png" rel="icon">
+</head>
+<body>
+    <header>
+        <h1>lolcatdomain.org: Yesterday's instruction set for tomorrow!</h1>
+        <nav>
+            <a href="/">Home</a>
+            <a href="/about/">About</a>
+            <a href="/posts/">Posts</a>
+            <a href="/rants/">Rants</a>
+        </nav>
+    </header>
+    <hr>
+    <section>
+        <h2>Yesterday's instruction set for tomorrow!</h2>
+        <p>I've finally pushed Pippin to a point where I feel it's something I can be proud of. In this post, I plan on running through my design, explaining the decisions I made along the way.</p>
+        <h3>The Big Picture</h3>
+        <p>Most architecture designs are either excessively complex or exceedingly reduced. With Pippin, my goal was to strike a polite middle ground. I worked with a few ideas in mind that especially shaped my design:</p>
+        <ul>
+            <li>Every instruction must have a use. Many of them may have an obscure use, e.g. there is no rotate operation in C, but rotations can be useful for inspecting bit arrays. I excluded or simplified some instructions, such as reversed subtraction operations, since their (uncommon) usage could be replaced with a short sequence of other operations.</li>
+            <li>Memory reads are more common than writes. This was observed in Agner Fog's ForwardCom architecture; arithmetic operations could read from, but not write to, memory. Likewise, I designed my architecture's most general instructions with this in mind. You can, for example, add a value from memory to a register, but it takes the store operation to write to memory.</li>
+            <li>Instructions should be expressive and consistent. In the x86 and m68k processors, I observed that many instructions supported an inconsistent subset of the processor's capabilities. On the other hand, I designed my instruction set with orthogonal addressing modes which are used by almost every instruction, excepting extremely complex operations such as multiplication/division and (in the future) floating point operations.</li>
+            <li>Code should be dense. Maybe my naive compiler won't be able to take advantage of them, but I wanted my design to make it easy for assembly programmers to write short code. This is limited by my other goals, but I tried to shorten as many common cases as possible.</li>
+        </ul>
+        <h3>The Register Architecture</h3>
+        <p>I took an unusual approach with my architecture, which was separating data and address registers. This technique, which was used in the m68k, helped to increase code density. Eight registers, as in the PDP-11, is far too few, especially when you consider the need to store global operating system pointers. Thirty-two, as in most RISCs, is good! ... but I don't think I need that many, and a five-bit register field isn't nearly dense enough. So instead, I have sixteen registers split into two groups of eight. The former, the data registers, are easy to use and modify in arithmetic expressions, while the latter, the address registers, can be dereferenced as memory values and modified as necessary.</p>
+        <p>Splitting registers this way allows my design to have sixteen registers for the price of eight! At least, mostly. In my instructions, I encode each register as a three-bit selector and determine the register set based off of a few conditions. In general, memory accesses always read/write through an address register, address-sized memory accesses always read to/write from an address register, and certain operating modes may force an address register. In all other cases, the data registers serve as the default.</p>
+        <h3>All my Instructions</h3>
+        <p>I'm not going to go through each instruction individually, as most of them correspond to a similar common instruction. However, I will give a pretty good overview!</p>
+        <ul>
+            <li><code>OOOOOyyyssmmmxxx</code>: Instructions matching this pattern are the most general arithmetic operations. 'y' and 'x' are register selectors, 'm' selects the operating mode, 's' selects the scale, and 'O' selects the specific operation to use. Here's an example: <code>and d1, 4(bp+8)</code>. This would take the conjunction of the first data register with the 4-byte memory value at the base pointer plus eight. However, some instructions, such as 'cmp' (compare), may not write back their result, and others, such as 'st' (store), write to memory.</li>
+            <li><code>OOOOOOOOssmmmxxx</code>: Instructions of this type have only one operand encoded within. This may be because they only need one operand &mdash; such as 'clr', which sets all bits in its operand to zero &mdash; or it may be because they take external operands, such as 'addi', which adds a memory value accessed immediately after the instruction to its operand. These immediate operations are primarily for code density purposes: they can take expressions such as <code>x = x & 0xFFFF0000</code>, which might ordinarily take three instructions, into just one!</li>
+            <li><code>OOOOOqqqssmmmxxx</code>: This is one type of "quick" instruction. Incrementing and decrementing a variable is a very common operation, but it can be expensive! This operation gives you a three-bit "quick" value which may range from 1-8 that may be used to increment/decrement the operand.</li>
+            <li><code>OOOOOqqqqqmmmxxx</code>: This is another extremely dense instruction. In a 32-bit system, it doesn't make sense to shift or rotate by more than 31. Therefore, a five-bit value is just enough! Instead of allowing shifts and rotates by immediate values, I chose to embed the five-bit value directly in the instruction, making shifts and rotates extremely dense yet almost completely expressive.</p>
+            <li><code>OOOOccccssmmmxxx</code>: This is a conditional operation: a jump! Notice that it has a full operand. Pretty odd, right? In most instruction sets, jumps are either absolute or register based. "But why stop there?" I thought. C offers function pointers, by which you may jump to essentially any memory value. So it makes sense for me to allow the full range of addressing modes in a jump! In order to allow for both relative and absolute jumps, I got a little creative: scales of data type are relative, while scales of address type are absolute. This way, the jump <i>can</i> work the same as before through some creative encoding.</p>
+        </ul>
+        <p>Of course, that's not all there is. There's a lot more! But that goes through the most general and potentially confusing decisions I made, so it should give enough context to read my doc!</p>
+        <p>It's a <a href="pippin.txt">plain text file</a> for now.</p>
+        <p>If you're confused by any of these instructions, I recommend reading through the designs of other famous ISAs such as the PDP-11, m68k, x86, or the ForwardCom. Mine isn't all that different &mdash; just more my taste! :D</p>
+    </section>
+    <hr>
+    <footer>
+        <p>Copyright &copy; 2023 by B. Kushnir.</p>
+        <p>This web site does not collect, analyze, or otherwise interract with data about you.</p>
+        <p>It has been and always will be written by hand in HTML and CSS without Javascript or cookies.</p>
+    </footer>
+</body>
+</html>
