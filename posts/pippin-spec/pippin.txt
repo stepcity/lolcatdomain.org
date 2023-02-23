@@ -25,17 +25,17 @@ cccc
 0001: jzc /       jneq : 0==ZF         : ZF clear / not equal
 0010: jvc /       jnov : 0==VF         : VF clear / no overflow
 0011: jcc / jhs / jnlo : 0==CF         : CF clear / higher or same / not lower
-0100: jhi /       jnls : 0==~CF|ZF     : higher / not lower or same
-0101: jge /       jnlt : 0==NF^VF      : greater or equal / not lesser than
-0110: jgt /       jnle : 0==(NF^VF)|ZF : greater than / not lesser or equal
+0100:       jhi / jnls : 0==~CF|ZF     : higher / not lower or same
+0101:       jge / jnlt : 0==NF^VF      : greater or equal / not lesser than
+0110:       jgt / jnle : 0==(NF^VF)|ZF : greater than / not lesser or equal
 0111: jsr              : N/A           : to subroutine
 1000: jns / jmi / jnpl : 1==NF         : NF set / minus / not plus
 1001: jzs / jeq        : 1==ZF         : ZF set / equal
 1010: jvs / jov        : 1==VF         : VF set / overflow
 1011: jcs / jlo / jnhs : 1==CF         : CF set / lower / not higher or same
-1100: jls /       jnhi : 1==~CF|ZF     : lower or same / not higher
-1101: jlt /       jnge : 1==NF^VF      : lesser than / not greater or equal
-1110: jle /       jngt : 1==(NF^VF)|ZF : lesser or equal / not greater than
+1100:       jls / jnhi : 1==~CF|ZF     : lower or same / not higher
+1101:       jlt / jnge : 1==NF^VF      : lesser than / not greater or equal
+1110:       jle / jngt : 1==(NF^VF)|ZF : lesser or equal / not greater than
 1111: jmp              : 1==1          : always
 
 [[Effective Addresses]]
@@ -271,8 +271,8 @@ RETURN:
     I am using a purely memory-based calling convention. The stack frame looks
 as follows:
 
-[BP+12]: (out) int4 'y'
-[BP+8] : (in) int1 'x' (aligned to 4 bytes)
+[BP+12]: (output) int4 'y'
+[BP+8] : (input) int1 'x' (aligned to 4 bytes)
 [BP+4] : previous IP
 [BP]   : previous BP
 
