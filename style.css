@@ -14,12 +14,12 @@ b {font-weight: bold}
 i {font-style: italic}
 
 table {
-  border-collapse: collapse;
+    border-collapse: collapse;
 }
 
 td {
-  border: 1px solid #DDD;
-  padding: 0 1em;
+    border: 1px solid #DDD;
+    padding: 0 1em;
 }
 
 h1, h2, h3, h4, h5, h6 {
