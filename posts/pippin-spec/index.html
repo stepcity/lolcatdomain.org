@@ -17,31 +17,205 @@
     </header>
     <hr>
     <section>
-        <h2>Yesterday's instruction set for tomorrow!</h2>
-        <p>I've finally pushed Pippin to a point where I feel it's something I can be proud of. In this post, I plan on running through my design, explaining the decisions I made along the way.</p>
-        <h3>The Big Picture</h3>
-        <p>Most architecture designs are either excessively complex or exceedingly reduced. With Pippin, my goal was to strike a polite middle ground. I worked with a few ideas in mind that especially shaped my design:</p>
-        <ul>
-            <li>Every instruction must have a use. Many of them may have an obscure use, e.g. there is no rotate operation in C, but rotations can be useful for inspecting bit arrays. I excluded or simplified some instructions, such as reversed subtraction operations, since their (uncommon) usage could be replaced with a short sequence of other operations.</li>
-            <li>Memory reads are more common than writes. This was observed in Agner Fog's ForwardCom architecture; arithmetic operations could read from, but not write to, memory. Likewise, I designed my architecture's most general instructions with this in mind. You can, for example, add a value from memory to a register, but it takes the store operation to write to memory.</li>
-            <li>Instructions should be expressive and consistent. In the x86 and m68k processors, I observed that many instructions supported an inconsistent subset of the processor's capabilities. On the other hand, I designed my instruction set with orthogonal addressing modes which are used by almost every instruction, excepting extremely complex operations such as multiplication/division and (in the future) floating point operations.</li>
-            <li>Code should be dense. Maybe my naive compiler won't be able to take advantage of them, but I wanted my design to make it easy for assembly programmers to write short code. This is limited by my other goals, but I tried to shorten as many common cases as possible.</li>
-        </ul>
-        <h3>The Register Architecture</h3>
-        <p>I took an unusual approach with my architecture, which was separating data and address registers. This technique, which was used in the m68k, helped to increase code density. Eight registers, as in the PDP-11, is far too few, especially when you consider the need to store global operating system pointers. Thirty-two, as in most RISCs, is good! ... but I don't think I need that many, and a five-bit register field isn't nearly dense enough. So instead, I have sixteen registers split into two groups of eight. The former, the data registers, are easy to use and modify in arithmetic expressions, while the latter, the address registers, can be dereferenced as memory values and modified as necessary.</p>
-        <p>Splitting registers this way allows my design to have sixteen registers for the price of eight! At least, mostly. In my instructions, I encode each register as a three-bit selector and determine the register set based off of a few conditions. In general, memory accesses always read/write through an address register, address-sized memory accesses always read to/write from an address register, and certain operating modes may force an address register. In all other cases, the data registers serve as the default.</p>
-        <h3>All my Instructions</h3>
-        <p>I'm not going to go through each instruction individually, as most of them correspond to a similar common instruction. However, I will give a pretty good overview!</p>
-        <ul>
-            <li><code>OOOOOyyyssmmmxxx</code>: Instructions matching this pattern are the most general arithmetic operations. 'y' and 'x' are register selectors, 'm' selects the operating mode, 's' selects the scale, and 'O' selects the specific operation to use. Here's an example: <code>and d1, 4(bp+8)</code>. This would take the conjunction of the first data register with the 4-byte memory value at the base pointer plus eight. However, some instructions, such as 'cmp' (compare), may not write back their result, and others, such as 'st' (store), write to memory.</li>
-            <li><code>OOOOOOOOssmmmxxx</code>: Instructions of this type have only one operand encoded within. This may be because they only need one operand &mdash; such as 'clr', which sets all bits in its operand to zero &mdash; or it may be because they take external operands, such as 'addi', which adds a memory value accessed immediately after the instruction to its operand. These immediate operations are primarily for code density purposes: they can take expressions such as <code>x = x & 0xFFFF0000</code>, which might ordinarily take three instructions, into just one!</li>
-            <li><code>OOOOOqqqssmmmxxx</code>: This is one type of "quick" instruction. Incrementing and decrementing a variable is a very common operation, but it can be expensive! This operation gives you a three-bit "quick" value which may range from 1-8 that may be used to increment/decrement the operand.</li>
-            <li><code>OOOOOqqqqqmmmxxx</code>: This is another extremely dense instruction. In a 32-bit system, it doesn't make sense to shift or rotate by more than 31. Therefore, a five-bit value is just enough! Instead of allowing shifts and rotates by immediate values, I chose to embed the five-bit value directly in the instruction, making shifts and rotates extremely dense yet almost completely expressive.</li>
-            <li><code>OOOOccccssmmmxxx</code>: This is a conditional operation: a jump! Notice that it has a full operand. Pretty odd, right? In most instruction sets, jumps are either absolute or register based. "But why stop there?" I thought. C offers function pointers, by which you may jump to essentially any memory value. So it makes sense for me to allow the full range of addressing modes in a jump! In order to allow for both relative and absolute jumps, I got a little creative: scales of data type are relative, while scales of address type are absolute. This way, the jump <i>can</i> work the same as before through some creative encoding.</p>
-        </ul>
-        <p>Of course, that's not all there is. There's a lot more! But that goes through the most general and potentially confusing decisions I made, so it should give enough context to read my doc!</p>
-        <p>It's a <a href="pippin.txt">plain text file</a> for now and it's obviously missing some important implementation info. As I finish up my development kit, I'll update all the public info.</p>
-        <p>If you're confused by any of these instructions, I recommend reading through the designs of other famous ISAs such as the PDP-11, m68k, x86, or the ForwardCom. Mine isn't all that different &mdash; just more my taste! :D</p>
+        <h2>Instruction Components</h2>
+        <h3>Condition Codes</h3>
+        <p>Some instructions may be executed conditionally, depending on four condition flags.</p>
+        <p>After an instruction is run, it may set or clear condition flags to indicate the properties of its result. The condition flags are: N, which is set for negative results, Z, which is set if the result is zero, V, which is set if the result has overflowed, and C, which is set to signal arithmetic carry out. These flags can also be combined together to determine even more properties. For example, after a subtraction, if the negative flag xor the overflow flag is set, then the left-hand-side is less than the right-hand-side. This is actually how the <code>CMP</code> (compare) instruction works! It simply subtracts a two numbers without storing the result.</p>
+        <p>Conditions are selected via a 4-bit condition code in the instruction. <code>0111</code> and <code>1111</code> are special. <code>1111</code> refers to no condition, meaning the instruction will always execute. In flow-control operations, <code>0111</code> is similar but also stores the instruction pointer on the stack before executing.</p>
+        <p>Below is a list defining each condition code, its mnemonic, the required state for running, and a verbal description.</p>
+        <table>
+            <tr><td><code>0000</td></code><td><code>jnc / jpl / jnmi</td></code><td><code>0==NF        </td></code><td>NF clear / plus / not minus</td></tr>
+            <tr><td><code>0001</td></code><td><code>jzc /       jneq</td></code><td><code>0==ZF        </td></code><td>ZF clear / not equal</td></tr>
+            <tr><td><code>0010</td></code><td><code>jvc /       jnov</td></code><td><code>0==VF        </td></code><td>VF clear / no overflow</td></tr>
+            <tr><td><code>0011</td></code><td><code>jcc / jhs / jnlo</td></code><td><code>0==CF        </td></code><td>CF clear / higher or same / not lower</td></tr>
+            <tr><td><code>0100</td></code><td><code>      jhi / jnls</td></code><td><code>0==~CF|ZF    </td></code><td>higher / not lower or same</td></tr>
+            <tr><td><code>0101</td></code><td><code>      jge / jnlt</td></code><td><code>0==NF^VF     </td></code><td>greater or equal / not lesser than</td></tr>
+            <tr><td><code>0110</td></code><td><code>      jgt / jnle</td></code><td><code>0==(NF^VF)|ZF</td></code><td>greater than / not lesser or equal</td></tr>
+            <tr><td><code>0111</td></code><td><code>jsr             </td></code><td><code>N/A          </td></code><td>to subroutine</td></tr>
+            <tr><td><code>1000</td></code><td><code>jns / jmi / jnpl</td></code><td><code>1==NF        </td></code><td>NF set / minus / not plus</td></tr>
+            <tr><td><code>1001</td></code><td><code>jzs / jeq       </td></code><td><code>1==ZF        </td></code><td>ZF set / equal</td></tr>
+            <tr><td><code>1010</td></code><td><code>jvs / jov       </td></code><td><code>1==VF        </td></code><td>VF set / overflow</td></tr>
+            <tr><td><code>1011</td></code><td><code>jcs / jlo / jnhs</td></code><td><code>1==CF        </td></code><td>CF set / lower / not higher or same</td></tr>
+            <tr><td><code>1100</td></code><td><code>      jls / jnhi</td></code><td><code>1==~CF|ZF    </td></code><td>lower or same / not higher</td></tr>
+            <tr><td><code>1101</td></code><td><code>      jlt / jnge</td></code><td><code>1==NF^VF     </td></code><td>lesser than / not greater or equal</td></tr>
+            <tr><td><code>1110</td></code><td><code>      jle / jngt</td></code><td><code>1==(NF^VF)|ZF</td></code><td>lesser or equal / not greater than</td></tr>
+            <tr><td><code>1111</td></code><td><code>jmp             </td></code><td><code>1==1         </td></code><td>always</td></tr>
+        </table>
+        <h3>Effective Addresses</h3>
+        <p>Operations may access memory through an 8-bit effective address (EA), which consists of a scale, defining the size, a register, and a mode, defining how the register is to be used. In addition to memory, these may refer to general-purpose registers or allow access to special-purpose registers, allowing access to all relevent processor state.</p>
+        <p>Below is a list defining each EA mode, its assembler syntax, its equivalent C code, and a verbal description.</p>
+        <table>
+            <tr><td><code>ss000xxx</td></code><td><code>Dx         </td></code><td><code>D[x]                 </td></code><td>data register</td></tr>
+            <tr><td><code>ss001xxx</td></code><td><code>Ax         </td></code><td><code>A[x]                 </td></code><td>address register</td></tr>
+            <tr><td><code>ss010xxx</td></code><td><code>s(Ax++)    </td></code><td><code>(s)M[A[x]++]         </td></code><td>post-increment deferred</td></tr>
+            <tr><td><code>ss011xxx</td></code><td><code>s(--Ax)    </td></code><td><code>(s)M[--A[x]]         </td></code><td>pre-decrement deferred</td></tr>
+            <tr><td><code>ss100xxx</td></code><td><code>s(Ax)      </td></code><td><code>(s)M[A[x]]           </td></code><td>deferred</td></tr>
+            <tr><td><code>ss101xxx</td></code><td><code>s(Ax+dsp16)</td></code><td><code>(s)M[A[x]+(H)M[IP++]]</td></code><td>base plus halfword deferred</td></tr>
+            <tr><td><code>ss110xxx</td></code><td><code>s(Ax+dsp32)</td></code><td><code>(s)M[A[x]+(W)M[IP++]]</td></code><td>base plus word deferred</td></tr>
+            <tr><td><code>ss111000</td></code><td><code>SR         </td></code><td><code>SR                   </td></code><td>Status Register</td></tr>
+            <tr><td><code>ss111010</td></code><td><code>#imm       </td></code><td><code>(s)M[IP++]           </td></code><td>immediate memory</td></tr>
+            <tr><td><code>ss111101</td></code><td><code>s(IP+dsp16)</td></code><td><code>(s)M[IP+(H)M[IP++]]  </td></code><td>IP plus halfword deferred</td></tr>
+            <tr><td><code>ss111110</td></code><td><code>s(IP+dsp32)</td></code><td><code>(s)M[IP+(W)M[IP++]]  </td></code><td>IP plus word deferred</td></tr>
+        </table>
+        <h3>Scales</h3>
+        <p>As this is a 32-bit byte-addressed machine, there are 3 obvious data scales: 1-, 2-, and 4-byte values (byte, halfword, and word values, respectively). In order to support a distinct set of address registers, there is one additional scale: the 4-byte address. Therefore, byte, halfword, or word scales cause the instruction to select data registers by default, while address scales cause the instruction to select address registers. Of course, effective addresses may specify either set in order to provide orthogonality.</p>
+        <p>Below is a list defining each scale, its assembler mnemonic, the number of bytes it takes up, whether or not it chooses data or address registers, and a verbal description.</p>
+        <table>
+            <tr><td><code>00</td></code><td><code>B</td></code><td><code>1</td></code><td><code>Dy</td></code><td>Byte</td></tr>
+            <tr><td><code>01</td></code><td><code>H</td></code><td><code>2</td></code><td><code>Dy</td></code><td>Halfword</td></tr>
+            <tr><td><code>10</td></code><td><code>W</td></code><td><code>4</td></code><td><code>Dy</td></code><td>Word</td></tr>
+            <tr><td><code>11</td></code><td><code>A</td></code><td><code>4</td></code><td><code>Ay</td></code><td>Address</td></tr>
+        </table>
+    </section>
+    <hr>
+    <section>
+        <h2>Instruction Encodings</h2>
+        <p>There are 50 instructions in total, although many of them perform the same operation with different operands.</p>
+        <h3>Miscellaneous</h3>
+        <table>
+            <tr><td><code>0000000000000000</code></td><td><code>NOP  </code></td><td><code>     </code></td><td>No OPeration</td></tr>
+            <tr><td><code>0000000000010000</code></td><td><code>RFI  </code></td><td><code>     </code></td><td>Return From Interupt</td></tr>
+            <tr><td><code>0000000000011000</code></td><td><code>UNLNK</code></td><td><code>     </code></td><td>UNLiNK</td></tr>
+            <tr><td><code>00000000ss110000</code></td><td><code>RFS  </code></td><td><code>s#imm</code></td><td>Return From Subroutine</td></tr>
+            <tr><td><code>00000000ss111000</code></td><td><code>LNK  </code></td><td><code>s#imm</code></td><td>LiNK</td></tr>
+        </table>
+        <h3>Arithmetic with Immediate</h3>
+        <p>These instructions handle very common arithmetic cases. They write to an effective address and read from an immediate value, allowing for complex operations such as <code>x = x & 0xFFFF0000</code> in just one instruction.</p>
+        <table>
+            <tr><td><code>00000001ssmmmxxx</code></td><td><code>CMPI </code></td><td><code>smx, #imm</code></td><td>CoMPare w/ Immediate</td></tr>
+            <tr><td><code>00000010ssmmmxxx</code></td><td><code>ADDI </code></td><td><code>smx, #imm</code></td><td>ADD w/ Immediate</td></tr>
+            <tr><td><code>00000011ssmmmxxx</code></td><td><code>SUBI </code></td><td><code>smx, #imm</code></td><td>SUBtract w/ Immediate</td></tr>
+            <tr><td><code>00000100ssmmmxxx</code></td><td><code>XORI </code></td><td><code>smx, #imm</code></td><td>eXclusive OR w/ Immediate</td></tr>
+            <tr><td><code>00000101ssmmmxxx</code></td><td><code>ORI  </code></td><td><code>smx, #imm</code></td><td>OR w/ Immediate</td></tr>
+            <tr><td><code>00000110ssmmmxxx</code></td><td><code>ANDI </code></td><td><code>smx, #imm</code></td><td>AND w/ Immediate</td></tr>
+            <tr><td><code>00000111ssmmmxxx</code></td><td><code>STI  </code></td><td><code>smx, #imm</code></td><td>STore Immediate</td></tr>
+        </table>
+        <h3>Single-operand Arithmetic</h3>
+        <p>These instructions only take one operand, either because they do not make sense with more, or in order to save space.</p>
+        <table>
+            <tr><td><code>00001000ssmmmxxx</code></td><td><code>NOT  </code></td><td><code>smx</code></td><td>NOT</td></tr>
+            <tr><td><code>00001001ssmmmxxx</code></td><td><code>NEG  </code></td><td><code>smx</code></td><td>NEGate</td></tr>
+            <tr><td><code>00001010ssmmmxxx</code></td><td><code>ADC  </code></td><td><code>smx</code></td><td>AdD w/ Carry</td></tr>
+            <tr><td><code>00001011ssmmmxxx</code></td><td><code>SBC  </code></td><td><code>smx</code></td><td>SuBtract w/ Carry</td></tr>
+            <tr><td><code>00001100ssmmmxxx</code></td><td><code>CLR  </code></td><td><code>smx</code></td><td>CLeaR</td></tr>
+            <tr><td><code>00001101ssmmmxxx</code></td><td><code>REV  </code></td><td><code>smx</code></td><td>REVerse</td></tr>
+            <tr><td><code>00001110ssmmmxxx</code></td><td><code>EXT  </code></td><td><code>smx</code></td><td>EXTend sign</td></tr>
+            <tr><td><code>00001111ssmmmxxx</code></td><td><code>TST  </code></td><td><code>smx</code></td><td>TeST against zero</td></tr>
+        </table>
+        <h3>Complex Arithmetic</h3>
+        <p>These instructions are complex and difficult to handle in hardware; additionally, they don't necessarily make sense for all machine registers; therefore, they only operate on data registers.</p>
+        <table>
+            <tr><td><code>00010yyy00001xxx</code></td><td><code>MUL  </code></td><td><code>Dy, Dx</code></td><td>MULtiply</td></tr>
+            <tr><td><code>00010yyy00010xxx</code></td><td><code>HMULU</code></td><td><code>Dy, Dx</code></td><td>High-word MULtiply (unsigned)</td></tr>
+            <tr><td><code>00010yyy00011xxx</code></td><td><code>HMULS</code></td><td><code>Dy, Dx</code></td><td>High-word MULtiply (signed)</td></tr>
+            <tr><td><code>00010yyy00100xxx</code></td><td><code>DIVU </code></td><td><code>Dy, Dx</code></td><td>DIVide (unsigned)</td></tr>
+            <tr><td><code>00010yyy00101xxx</code></td><td><code>DIVS </code></td><td><code>Dy, Dx</code></td><td>DIVide (signed)</td></tr>
+            <tr><td><code>00010yyy00110xxx</code></td><td><code>MODU </code></td><td><code>Dy, Dx</code></td><td>MODulo (unsigned)</td></tr>
+            <tr><td><code>00010yyy00111xxx</code></td><td><code>MODS </code></td><td><code>Dy, Dx</code></td><td>MODulo (signed)</td></tr>
+        </table>
+        <h3>Shifts and Rotates</h3>
+        <p>As this is a 32-bit machine, it doesn't make sense to shift or rotate by more than 31, which is stored in a 5-bit value. Therefore, these do not take a scale: the machine will only ever read a single byte value.</p>
+        <table>
+            <tr><td><code>00011yyy00mmmxxx</code></td><td><code>LSL  </code></td><td><code>Dy, mx</code></td><td>Logical Shift Left</td></tr>
+            <tr><td><code>00011yyy01mmmxxx</code></td><td><code>LSR  </code></td><td><code>Dy, mx</code></td><td>Logical Shift Right</td></tr>
+            <tr><td><code>00011yyy10mmmxxx</code></td><td><code>ASR  </code></td><td><code>Dy, mx</code></td><td>Arithmetic Shift Right</td></tr>
+            <tr><td><code>00011yyy11mmmxxx</code></td><td><code>ROR  </code></td><td><code>Dy, mx</code></td><td>ROtate Right</td></tr>
+        </table>
+        <h3>Quick Arithmetic</h3>
+        <p>Four instructions &mdash;loads, comparisons, additions, and subtractions &mdash;are common enough that they take extremely compressed variants. Loads and comparisons generally have a higher range; therefore, they were optimized for 8-bit values. Additions and subtractions are often most important for pointer modifications; therefore, they take only a 3-bit value, but may operate on a full effective address. Because modifying by zero does nothing, the value is incremented, giving a range of 1..8.</p>
+        <table>
+            <tr><td><code>01000yyyqqqqqqqq</code></td><td><code>LDQ  </code></td><td><code>Dy, #q   </code></td><td>LoaD Quick</td></tr>
+            <tr><td><code>01001yyyqqqqqqqq</code></td><td><code>CMPQ </code></td><td><code>Dy, #q   </code></td><td>CoMPare Quick</td></tr>
+            <tr><td><code>01010qqqssmmmxxx</code></td><td><code>ADDQ </code></td><td><code>smx, #q+1</code></td><td>ADD Quick</td></tr>
+            <tr><td><code>01011qqqssmmmxxx</code></td><td><code>SUBQ </code></td><td><code>smx, #q+1</code></td><td>SUBtract Quick</td></tr>
+        </table>
+        <h3>Quick Shifts and Rotates</h3>
+        <p>Because shifts and rotates may be expressed by a 5-bit value, it is possible to store the complete range of shifts and rotates within a quick instruction value. Because rotating by zero does nothing, that special case is replaced with a rotate-through-carry, which is useful for inspecting a value bit-by-bit.</p>
+        <table>
+            <tr><td><code>01100qqqqqmmmxxx</code></td><td><code>LSLQ </code></td><td><code>mx, #q</code></td><td>Logical Shift Left Quick</td></tr>
+            <tr><td><code>01101qqqqqmmmxxx</code></td><td><code>LSRQ </code></td><td><code>mx, #q</code></td><td>Logical Shift Right Quick</td></tr>
+            <tr><td><code>01110qqqqqmmmxxx</code></td><td><code>ASRQ </code></td><td><code>mx, #q</code></td><td>Arithmetic Shift Right Quick</td></tr>
+            <tr><td><code>01111qqqqqmmmxxx</code></td><td><code>RORQ </code></td><td><code>mx, #q</code></td><td>ROtate Right Quick</td></tr>
+            <tr><td><code>0111100000mmmxxx</code></td><td><code>RRC  </code></td><td><code>mx    </code></td><td>Rotate Right through Carry</td></tr>
+        </table>
+        <h3>Arithmetic</h3>
+        <p>These are the core arithmetic instructions. They may read from memory, noting the fact that most arithmetic expressions will involve memory reads, but only <code>ST</code> writes to memory, accounting for the fact that memory reads are more common than memory writes. For example, <code>a = b + c * d</code> reads from <code>b</code>, <code>c</code>, and <code>d</code>, but only writes to <code>a</code>.</p>
+        <table>
+            <tr><td><code>10000yyyssmmmxxx</code></td><td><code>LD   </code></td><td><code>Ry, smx</code></td><td>LoaD</td></tr>
+            <tr><td><code>10001yyyssmmmxxx</code></td><td><code>CMP  </code></td><td><code>Ry, smx</code></td><td>CoMPare</td></tr>
+            <tr><td><code>10010yyyssmmmxxx</code></td><td><code>ADD  </code></td><td><code>Ry, smx</code></td><td>ADD</td></tr>
+            <tr><td><code>10011yyyssmmmxxx</code></td><td><code>SUB  </code></td><td><code>Ry, smx</code></td><td>SUBtract</td></tr>
+            <tr><td><code>10100yyyssmmmxxx</code></td><td><code>XOR  </code></td><td><code>Ry, smx</code></td><td>eXclusive OR</td></tr>
+            <tr><td><code>10101yyyssmmmxxx</code></td><td><code>OR   </code></td><td><code>Ry, smx</code></td><td>OR</td></tr>
+            <tr><td><code>10110yyyssmmmxxx</code></td><td><code>AND  </code></td><td><code>Ry, smx</code></td><td>AND</td></tr>
+            <tr><td><code>10111yyyssmmmxxx</code></td><td><code>ST   </code></td><td><code>smx, Ry</code></td><td>STore</td></tr>
+        </table>
+        <h3>Flow Control</h3>
+        <p>These instructions allow for branching. They take a 4-bit condition code, allowing branches to run conditionally based off the result of a previous comparison or arithmetic operation. <code>Bcc</code> embeds an 8-bit offset in itself which is added to the IP to get the next instruction. <code>Jcc</code> is more complex: if its source is data, then it's added to the IP; otherwise, if it is an address, then it's used on its own. This way, both relative and absolute branches can be used with as much flexibility as any other memory operation.</p>
+        <table>
+            <tr><td><code>1110ccccqqqqqqqq</code></td><td><code>Bcc  </code></td><td><code>#q </code></td><td>Branch</td></tr>
+            <tr><td><code>1111ccccssmmmxxx</code></td><td><code>Jcc  </code></td><td><code>smx</code></td><td>Jump</td></tr>
+        </table>
+    </section>
+    <hr>
+    <section>
+        <h2>Sample Program</h2>
+        <h3>High-level Language</h3>
+        <p>The following snipped of code, written in a hypothetical high-level language (HLL), calculates the factorial of the number 6.</p>
+<pre>FUNCTION INT4 status = main() {
+    status = factorial(6)!
+}
+
+FUNCTION INT4 y = factorial(INT1 x) {
+    IF x < 0 THEN
+        y = -1!
+    
+    y = 1.
+    
+    WHILE x > 0 DO {
+        y = y * x.
+        x = x - 1.
+    }
+}</pre>
+        <h3>Low-Level (Assembly) Language</h3>
+        <p>Below is what a naive compiler might output based off of the above code. One thing worth noting is <code>BSR #-2</code> &mdash;in a real machine, this would be loop indefinitely and overflow the call stack; it doesn't make sense. I've inserted this instruction as a sort of breakpoint in order to signal to my virtual machine that execution should stop.</p>
+<pre>MAIN:
+    SUBQ  SP, #4
+    STI   B(--SP), #6
+    BSR   "FACTORIAL"
+    BSR   #-2
+
+FACTORIAL:
+    LNK   
+    TST   B(BP+4)
+    BNLT  "ELSE"
+    STI   W(BP+8), #-1
+    BRA   "RETURN"
+ELSE:
+    STI   W(BP+8), #1
+    BRA   "TEST"
+LOOP:
+    LD    D1, W(BP+8)
+    LD    D2, B(BP+4)
+    MUL   D1, D2
+    ST    W(BP+8), D1
+    SUBQ  B(BP+4), #1
+TEST:
+    TST   B(BP+4)
+    BGT   "LOOP"
+RETURN:
+    UNLNK 
+    RFS   #4</pre>
+        <h4>Some Notes</h4>
+        <p>I am using a purely memory-based calling convention. The stack frame looks as follows:</p>
+        <table>
+            <tr><td><code>[BP+12]</code></td><td>(output) int4 y</td></tr>
+            <tr><td><code>[BP+8] </code></td><td>(input) int1 x (aligned to 4 bytes)</td></tr>
+            <tr><td><code>[BP+4] </code></td><td>previous IP</td></tr>
+            <tr><td><code>[BP]   </code></td><td>previous BP</td></tr>
+        </table>
+        <p>In general, the order is (from bottom to top): outputs, inputs, IP, BP, variables, and scratch stack space.</p>
+        <p>This calling convention doesn't take advantage of the freely available registers, making it inefficient; however, it is closer to the high-level code, making it useful for debugging; additionally, it is simple enough that a naive compiler can generate code for it with ease.</p>
     </section>
     <hr>
     <footer>
