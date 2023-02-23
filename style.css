@@ -13,9 +13,13 @@ a:active     {color: #F00}
 b {font-weight: bold}
 i {font-style: italic}
 
-code {
-    border: 1px solid #DDD;
-    background: #EEE;
+table {
+  border-collapse: collapse;
+}
+
+td {
+  border: 1px solid #DDD;
+  padding: 0 1em;
 }
 
 h1, h2, h3, h4, h5, h6 {
