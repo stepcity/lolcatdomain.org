@@ -129,7 +129,7 @@
             <tr><td><code>00011yyy11mmmxxx</code></td><td><code>ROR  </code></td><td><code>Dy, mx</code></td><td>ROtate Right</td></tr>
         </table>
         <h3>Quick Arithmetic</h3>
-        <p>Four instructions &mdash;loads, comparisons, additions, and subtractions &mdash;are common enough that they take extremely compressed variants. Loads and comparisons generally have a higher range; therefore, they were optimized for 8-bit values. Additions and subtractions are often most important for pointer modifications; therefore, they take only a 3-bit value, but may operate on a full effective address. Because modifying by zero does nothing, the value is incremented, giving a range of 1..8.</p>
+        <p>Four instructions &mdash;loads, comparisons, additions, and subtractions &mdash;are common enough that they take extremely compressed variants. Loads and comparisons generally have a higher range; therefore, they were optimized for 8-bit values. Additions and subtractions are often most important for pointer modifications; therefore, they take only a 3-bit value, but may operate on a full effective address. Because modifying by zero does nothing, the value is incremented, giving a range of 1 through 8.</p>
         <table>
             <tr><td><code>01000yyyqqqqqqqq</code></td><td><code>LDQ  </code></td><td><code>Dy, #q   </code></td><td>LoaD Quick</td></tr>
             <tr><td><code>01001yyyqqqqqqqq</code></td><td><code>CMPQ </code></td><td><code>Dy, #q   </code></td><td>CoMPare Quick</td></tr>

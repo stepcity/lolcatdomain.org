@@ -156,7 +156,7 @@ comparisons generally have a higher range; therefore, they were optimized for
 8-bit values. Additions and subtractions are often most important for pointer
 modifications; therefore, they take only a 3-bit value, but may operate on a
 full effective address. Because modifying by zero does nothing, the value is
-incremented, giving a range of 1..8.
+incremented, giving a range of 1 through 8.
 
 01000yyyqqqqqqqq: LDQ   Dy, #q    : LoaD Quick
 01001yyyqqqqqqqq: CMPQ  Dy, #q    : CoMPare Quick
